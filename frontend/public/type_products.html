@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Product Types</title>
+</head>
+<body>
+    <h1>add products type</h1>
+
+    <form action="/api/product-type/upload" method="post" enctype="multipart/form-data">
+        <label>ชื่อประเภทสินค้า:</label>
+        <input type="text" name="name" required><br><br>
+    
+        <label>รูปภาพหลัก (อัปโหลดได้หลายไฟล์):</label>
+        <input type="file" name="main_image[]" multiple required><br><br>
+    
+        <button type="submit">ส่งข้อมูล</button>
+    </form>
+    
+  
+    <h1>Product Types</h1>
+    <form method="get" action="/product-types">
+        <label for="search">Search:</label>
+        <input type="text" name="search" id="search" value='{{ search | default(value="") }}' />
+        <button type="submit">Search</button>
+    </form>
+
+    {% if error %}
+        <p>Error: {{ error }}</p>
+    {% endif %}
+
+    {% if product_types %}
+        <div>
+            {% for type in product_types %}
+                <div>
+                    <!-- ลิงก์ไปยังหน้า products พร้อมพารามิเตอร์ type_id -->
+                    <a href="/products?type_id={{ type.id }}">
+                        <h2>{{ type.name }}</h2>
+                        <div>
+                            {% for path in type.images_path %}
+                                <img src="{{ path }}" alt="{{ type.name }}" style="height: 100px;">
+                            {% endfor %}
+                        </div>
+                    </a>
+                </div>
+                <form action="/api/product-type/delete" method="post">
+                    <input type="hidden" name="delete_id" value="{{ type.id }}">
+                    <button type="submit">ลบ</button>
+                </form>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p>No product types found.</p>
+    {% endif %}
+                <div>
+                    <a href="/products?type_id=null">
+                        <h2>other</h2>
+                    </a>
+                </div>
+    <div>
+        <p>Page {{ pagination.current_page }} of {{ pagination.total_pages }}</p>
+        {% if pagination.current_page > 1 %}
+            <a href="/product-types?page={{ pagination.current_page - 1 }}">Previous</a>
+        {% endif %}
+        {% if pagination.current_page < pagination.total_pages %}
+            <a href="/product-types?page={{ pagination.current_page + 1 }}">Next</a>
+        {% endif %}
+    </div>    
+</body>
+</html>

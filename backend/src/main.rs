@@ -4,9 +4,10 @@ mod handlers;
 
 use actix_web::{App, HttpServer};
 use db::init_db;
+
 use handlers::product_type::{delete_product_type, get_product_types, post_product_types, update_product_type};
 use handlers::products::{get_products , post_products ,update_product ,delete_product};
-
+use handlers::get_images::get_image;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let pool = init_db().await;
@@ -14,6 +15,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(actix_web::web::Data::new(pool.clone()))
+            //images
+            .service(get_image)
             //product_types
             .service(get_product_types)
             .service(post_product_types)
@@ -25,7 +28,7 @@ async fn main() -> std::io::Result<()> {
             .service(update_product)
             .service(delete_product)
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(("127.0.0.1", 2001))?
     .run()
     .await
 }

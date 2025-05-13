@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use rust_decimal::Decimal;
 use serde_json::Value;
 use chrono::NaiveDateTime;
 //ส่วนรับโครงสร้างข้อมูลของ products_type_colunm
@@ -29,10 +28,11 @@ pub struct Products{
     pub products_type_id: Option<i64>,
     pub products_type_name: Option<String>,
 }
+
 #[derive(Deserialize,Debug)]
 pub struct NewProducts{
     pub name_product: String,
-    pub price: Decimal,
+    pub price: f64,
     pub detail: Value,
     pub images_path: Vec<String>,
     pub stock:i64,
@@ -44,6 +44,7 @@ pub struct NewProducts{
 pub struct Querysearchandpage {
     pub search: Option<String>,
     pub page: Option<i64>,
+    pub type_id: Option<String>,
 }
 
 #[derive(Serialize)]

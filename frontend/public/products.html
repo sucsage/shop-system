@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Product List</title>
+</head>
+
+<body>
+
+    <h1>Add products</h1>
+
+    <form action="/api/product/upload" method="post" enctype="multipart/form-data">
+        <div class="form-group">
+            <label for="name">ชื่อสินค้า</label>
+            <input type="text" id="name" name="name" required>
+        </div>
+
+        <div class="form-group">
+            <label for="price">ราคา</label>
+            <input type="number" id="price" name="price" step="0.01" min="0" required>
+        </div>
+
+        <div class="form-group">
+            <label for="stock">จำนวนสินค้าในสต็อก</label>
+            <input type="number" id="stock" name="stock" min="1" required>
+        </div>
+
+        <div class="form-group">
+            <label for="product_type_name">ประเภทสินค้า</label>
+            <select name="product_type_name">
+                <option value="">-- All Types --</option>
+                {% for t in product_types %}
+                <option value="{{ t.name }}">{{ t.name }}</option>
+                {% endfor %}
+                <option value="null">other</option>
+            </select>
+        </div>
+
+        <h3>Product Details (Mixed Format)</h3>
+        <div id="detail-mixed"></div>
+
+        <button type="button" onclick="addMixedField()">➕ Add Field</button><br><br>
+
+        <!-- ฟิลด์ที่ซ่อนสำหรับเก็บ JSON -->
+        <input type="hidden" id="detail" name="detail" value="{}">
+
+        <div class="form-group">
+            <label for="main_image">รูปภาพสินค้า (สามารถเลือกได้หลายรูป)</label>
+            <input type="file" id="main_image" name="main_image[]" accept="image/*" multiple>
+            <div class="image-preview" id="imagePreview"></div>
+        </div>
+
+        <button type="submit" class="btn-submit">บันทึกสินค้า</button>
+    </form>
+
+    <h1>Product List</h1>
+    {% if products | length > 0 %}
+    <ul>
+        {% for product in products %}
+        <li>
+            <h2>{{ product.name_product }} - {{ product.price }}฿</h2>
+            <h3>type : {{ product.products_type_name | default(value="other") }}</h3>
+            {% for path in product.images_path %}
+            <img src="/api/images{{ path }}" alt="{{ product.name_product }}" style="height: 100px;" />
+            {% endfor %}
+            <p><strong>Stock:</strong> {{ product.stock }}</p>
+
+            {# ตรวจว่ามี detail หรือไม่ #}
+            {% if product.detail is defined and product.detail | length > 0 %}
+            <p><strong>Details:</strong></p>
+            <ul>
+                {% for key, value in product.detail %}
+                <li><strong>{{ key | capitalize }}:</strong>
+                    {% if value is iterable and value is not string %}
+                    <ul>
+                        {% for item in value %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    {{ value }}
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p>No details available for this product.</p>
+            {% endif %}
+            <form action="/api/products/delete" method="post">
+                <input type="hidden" name="delete_id" value="{{ product.id }}">
+                <button type="submit">ลบ</button>
+            </form>
+            <hr>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>No products found.</p>
+    {% endif %}
+    <script>
+        function addMixedField() {
+            const container = document.getElementById('detail-mixed');
+            const fieldId = 'field-' + Date.now();
+
+            const div = document.createElement('div');
+            div.className = 'mixed-value-field';
+            div.id = fieldId;
+
+            div.innerHTML = `
+        <input type="text" placeholder="Key" class="mixed-key" oninput="updateDetailJson()">
+        <select onchange="changeType('${fieldId}', this.value); updateDetailJson()">
+            <option value="string">String</option>
+            <option value="array">Array</option>
+        </select>
+        <div class="value-input"></div>
+        <button type="button" onclick="removeField('${fieldId}')">🗑️</button>
+    `;
+
+            container.appendChild(div);
+            changeType(fieldId, 'string');
+        }
+
+        function changeType(fieldId, type) {
+            const field = document.getElementById(fieldId);
+            const valueInput = field.querySelector('.value-input');
+
+            if (type === 'string') {
+                valueInput.innerHTML = `<input type="text" class="mixed-string-value" oninput="updateDetailJson()">`;
+            } else if (type === 'array') {
+                valueInput.innerHTML = `
+            <div class="mixed-array-item"><input type="text" oninput="updateDetailJson()">
+                <button type="button" onclick="removeArrayItem(this)">❌</button>
+            </div>
+            <button type="button" onclick="addArrayItem(this)">➕ Item</button>
+        `;
+            }
+        }
+
+        function addArrayItem(button) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'mixed-array-item';
+            wrapper.innerHTML = `<input type="text" oninput="updateDetailJson()"> <button type="button" onclick="removeArrayItem(this)">❌</button>`;
+            button.parentElement.insertBefore(wrapper, button);
+            updateDetailJson();
+        }
+
+        function removeArrayItem(button) {
+            button.parentElement.remove();
+            updateDetailJson();
+        }
+
+        function removeField(fieldId) {
+            const field = document.getElementById(fieldId);
+            field.remove();
+            updateDetailJson();
+        }
+
+        function updateDetailJson() {
+            const detailData = {};
+            const fields = document.querySelectorAll('.mixed-value-field');
+
+            fields.forEach(field => {
+                const key = field.querySelector('.mixed-key')?.value.trim();
+                const select = field.querySelector('select');
+                const type = select?.value;
+
+                if (!key) return;
+
+                if (type === 'string') {
+                    const value = field.querySelector('.mixed-string-value')?.value.trim();
+                    if (value !== undefined) detailData[key] = value;
+
+                } else if (type === 'array') {
+                    const items = [];
+                    field.querySelectorAll('.mixed-array-item input').forEach(input => {
+                        const val = input.value.trim();
+                        if (val) items.push(val);
+                    });
+                    detailData[key] = items;
+                }
+            });
+
+            document.getElementById('detail').value = JSON.stringify(detailData);
+        }
+    </script>
+</body>
+
+</html>
