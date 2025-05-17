@@ -5,6 +5,7 @@
     <title>Product Types</title>
 </head>
 <body>
+    <a href="/products">products</a>
     <h1>add products type</h1>
 
     <form action="/api/product-type/upload" method="post" enctype="multipart/form-data">
@@ -38,14 +39,18 @@
                         <h2>{{ type.name }}</h2>
                         <div>
                             {% for path in type.images_path %}
-                                <img src="{{ path }}" alt="{{ type.name }}" style="height: 100px;">
+                                <img src="/api/images{{ path }}" alt="{{ type.name }}" style="height: 100px;">
                             {% endfor %}
                         </div>
                     </a>
                 </div>
+                <form action="/api/product-type-all/delete" method="post">
+                    <input type="hidden" name="delete_id" value="{{ type.id }}">
+                    <button type="submit">ลบทั้งหมด</button>
+                </form>
                 <form action="/api/product-type/delete" method="post">
                     <input type="hidden" name="delete_id" value="{{ type.id }}">
-                    <button type="submit">ลบ</button>
+                    <button type="submit">ลบ(ลบแค่ type แต่สิ้นค้าทั้งหมดใน type จะถูกย้ายไป other)</button>
                 </form>
             {% endfor %}
         </div>

@@ -5,7 +5,7 @@ mod handlers;
 use actix_web::{App, HttpServer};
 use db::init_db;
 
-use handlers::product_type::{delete_product_type, get_product_types, post_product_types, update_product_type};
+use handlers::product_type::{delete_product_type_all, get_product_types, post_product_types, /*update_product_type ,*/delete_product_type};
 use handlers::products::{get_products , post_products ,update_product ,delete_product};
 use handlers::get_images::get_image;
 #[actix_web::main]
@@ -20,8 +20,9 @@ async fn main() -> std::io::Result<()> {
             //product_types
             .service(get_product_types)
             .service(post_product_types)
-            .service(update_product_type)
+            //.service(update_product_type)
             .service(delete_product_type)
+            .service(delete_product_type_all)
             //products
             .service(get_products)
             .service(post_products)

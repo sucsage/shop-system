@@ -134,6 +134,25 @@ pub async fn post_products_type(name: &str, file_paths: &[String]) -> Result<(),
     }
 }
 
+pub async fn delete_product_type_all(id: u64) -> Result<(), String> {
+    let base_url = env::var("API").unwrap_or_else(|_| "unknown".to_string());
+    let backend_url = format!("{}/api/product-types-all/{}", base_url, id);
+    let client = reqwest::Client::new();
+
+    match client.delete(&backend_url).send().await {
+        Ok(response) => {
+            let status = response.status();
+            if status.is_success() || status.as_u16() == 302 {
+                Ok(())
+            } else {
+                let error_text = response.text().await.unwrap_or_default();
+                Err(format!("Backend error: {}, Details: {}", status, error_text))
+            }
+        }
+        Err(e) => Err(format!("Request error: {}", e)),
+    }
+}
+
 pub async fn delete_product_type(id: u64) -> Result<(), String> {
     let base_url = env::var("API").unwrap_or_else(|_| "unknown".to_string());
     let backend_url = format!("{}/api/product-types/{}", base_url, id);

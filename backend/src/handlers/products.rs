@@ -276,7 +276,7 @@ pub async fn post_products(db: web::Data<SqlitePool>, mut payload: Multipart) ->
             );
             let filename = format!("{}_{}.jpg", temp_name, index);
             let file_path = format!("{}/{}", folder_path, filename);
-            product_type_name = "null".to_string();
+            
             fs::create_dir_all(&folder_path).unwrap();
 
             if save_file(&mut field, &file_path).await.is_err() {
@@ -301,7 +301,7 @@ pub async fn post_products(db: web::Data<SqlitePool>, mut payload: Multipart) ->
 
     // 🟡 หา id ของ products_type_name
     let products_type_id: Option<i64> =
-        if !product_type_name.is_empty() && product_type_name != "null" {
+        if !product_type_name.is_empty() && product_type_name != "other"{
             println!("🔍 Looking up product type: {}", product_type_name);
             let row = sqlx::query("SELECT id FROM products_type WHERE products_type_name = ?")
                 .bind(&product_type_name)

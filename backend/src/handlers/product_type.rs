@@ -2,7 +2,8 @@ use crate::models::{
     NewProductType, PaginatedResponse, PaginationInfo, ProductType, Querysearchandpage,
 };
 use actix_multipart::Multipart;
-use actix_web::{HttpResponse, Responder, delete, get, post, put, web};
+use actix_web::dev::Path;
+use actix_web::{HttpResponse, Responder, delete, get, patch, post, put, web};
 use futures_util::StreamExt;
 use sqlx::Row;
 use sqlx::SqlitePool;
@@ -94,14 +95,15 @@ pub async fn get_product_types(
                         let type_id: i64 = row.get("product_type_id");
                         let image_path: String = row.get("image_path");
 
-                        // แปลง path จาก "../databases/dbimages/main/food_0.jpg" → "http://localhost:2001/images/main/food_0.jpg"
-                        let web_path = image_path
-                            .replace("../databases/dbimages/", "http://localhost:2001/images/");
+                        if image_path.starts_with("../databases/dbimages/") {
+                            let rel_path = image_path.replace("../databases/dbimages/", "");
+                            let web_path = format!("/images/{}", rel_path);
 
-                        if let Some(product_type) =
-                            product_types.iter_mut().find(|pt| pt.id == type_id)
-                        {
-                            product_type.images_path.push(web_path);
+                            if let Some(product_type) =
+                                product_types.iter_mut().find(|pt| pt.id == type_id)
+                            {
+                                product_type.images_path.push(web_path);
+                            }
                         }
                     }
                 }
@@ -156,7 +158,7 @@ pub async fn post_product_types(db: web::Data<SqlitePool>, mut payload: Multipar
                 product_type_name.clone()
             };
 
-            let folder_path = format!("../databases/dbimages/{}/main",product_type_name);
+            let folder_path = format!("../databases/dbimages/{}/main", product_type_name);
             let filename = format!("{}_{}.jpg", temp_name, index);
             let file_path = format!("{}/{}", folder_path, filename);
 
@@ -235,88 +237,17 @@ async fn save_file(field: &mut actix_multipart::Field, filepath: &str) -> std::i
 
     Ok(())
 }
-
-#[delete("/api/product-types/{id}")]
-pub async fn delete_product_type(
-    db: web::Data<SqlitePool>,
-    path: web::Path<i64>,
-) -> impl Responder {
-    let id = path.into_inner();
-
-    let mut tx = match db.begin().await {
-        Ok(tx) => tx,
-        Err(_) => return HttpResponse::InternalServerError().body("Failed to begin transaction"),
-    };
-
-    // 🔍 ดึง path ของรูปภาพที่ต้องลบ
-    let image_paths = match sqlx::query_scalar::<_, String>(
-        "SELECT image_path FROM images WHERE product_type_id = ?",
-    )
-    .bind(id)
-    .fetch_all(&mut *tx)
-    .await
-    {
-        Ok(paths) => paths,
-        Err(_) => return HttpResponse::InternalServerError().body("Failed to fetch image paths"),
-    };
-    
-    // สมมุติว่า path มีรูปแบบเหมือนกันทั้งหมด
-    if let Some(first_path) = image_paths.get(0) {
-        let path = std::path::Path::new(first_path);
-    
-        // ลบ 2 ระดับสุดท้ายออก: game/minecraft/minecraft_0.jpg -> ../databases/dbimages/
-        if let Some(grand_parent) = path.parent().and_then(|p| p.parent()) {
-            if grand_parent.exists() {
-                if let Err(e) = fs::remove_dir_all(grand_parent) {
-                    return HttpResponse::InternalServerError()
-                        .body(format!("Failed to delete directory:{} , {}",e, grand_parent.display()));
-                }
-            }
-        }
-    }
-
-    // ลบจากฐานข้อมูล
-    if let Err(_) = sqlx::query("DELETE FROM images WHERE product_type_id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-    {
-        return HttpResponse::InternalServerError().body("Failed to delete related images");
-    }
-
-    if let Err(_) = sqlx::query("DELETE FROM products WHERE products_type_id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-    {
-        return HttpResponse::InternalServerError().body("Failed to delete related products");
-    }
-
-    if let Err(_) = sqlx::query("DELETE FROM products_type WHERE id = ?")
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-    {
-        return HttpResponse::InternalServerError().body("Failed to delete product type");
-    }
-
-    if let Err(_) = tx.commit().await {
-        return HttpResponse::InternalServerError().body("Failed to commit transaction");
-    }
-
-    HttpResponse::Ok().body("Product type deleted successfully")
-}
-
-
+/*
 #[put("/api/product-types/{id}")]
 pub async fn update_product_type(
     db: web::Data<SqlitePool>,
     path: web::Path<i64>,
-    json: web::Json<NewProductType>,
+    // แก้
+    mut payload: Multipart,
 ) -> impl Responder {
     let id = path.into_inner();
-    let name = &json.name;
-    let images = &json.images_path;
+    let mut name = String::new();
+    let mut images_path = Vec::new();
 
     let mut tx = match db.begin().await {
         Ok(tx) => tx,
@@ -357,4 +288,241 @@ pub async fn update_product_type(
     }
 
     HttpResponse::Ok().body("Product type updated")
+}
+
+#[patch("/api/prduct-types-name/{id}")]
+pub async fn update_product_type_name(
+    db: web::Data<SqlitePool>,
+    path: web::Path<usize>,
+    mut payload: Multipart,
+) -> impl Responder {
+    let id = path.into_inner();
+
+    let mut product_type_name = String::new();
+
+    while let Some(item) = payload.next().await {
+        let mut field = match item {
+            Ok(f) => f,
+            Err(_) => return HttpResponse::BadRequest().body("Invalid form data"),
+        };
+
+        let name = field.name().unwrap_or("").to_string();
+
+        if name == "name" {
+            let mut data = Vec::new();
+            while let Some(chunk) = field.next().await {
+                data.extend_from_slice(&chunk.unwrap());
+            }
+            product_type_name = String::from_utf8(data).unwrap_or_default();
+        }
+    }
+
+    let mut tx = match db.begin().await {
+        Ok(tx) => tx,
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to begin transaction"),
+    };
+
+    let current_name = sqlx::query("SELECT products_type_name FROM products_type WHERE id = (?)")
+        .bind(id.to_string())
+        .execute(&mut *tx)
+        .await;
+
+    if current_name != product_type_name {}
+
+    HttpResponse::Ok().body("edit product type pass")
+}
+*/
+#[delete("/api/product-types-all/{id}")]
+pub async fn delete_product_type_all(
+    db: web::Data<SqlitePool>,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let id = path.into_inner();
+
+    let mut tx = match db.begin().await {
+        Ok(tx) => tx,
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to begin transaction"),
+    };
+
+    // 🔍 ดึง path ของรูปภาพที่ต้องลบ
+    let image_paths = match sqlx::query_scalar::<_, String>(
+        "SELECT image_path FROM images WHERE product_type_id = ?",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await
+    {
+        Ok(paths) => paths,
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to fetch image paths"),
+    };
+
+    // สมมุติว่า path มีรูปแบบเหมือนกันทั้งหมด
+    if let Some(first_path) = image_paths.get(0) {
+        let path = std::path::Path::new(first_path);
+
+        // ลบ 2 ระดับสุดท้ายออก: game/minecraft/minecraft_0.jpg -> ../databases/dbimages/
+        if let Some(grand_parent) = path.parent().and_then(|p| p.parent()) {
+            if grand_parent.exists() {
+                if let Err(e) = fs::remove_dir_all(grand_parent) {
+                    return HttpResponse::InternalServerError().body(format!(
+                        "Failed to delete directory:{} , {}",
+                        e,
+                        grand_parent.display()
+                    ));
+                }
+            }
+        }
+    }
+
+    // ลบจากฐานข้อมูล
+    if let Err(_) = sqlx::query("DELETE FROM images WHERE product_type_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+    {
+        return HttpResponse::InternalServerError().body("Failed to delete related images");
+    }
+
+    if let Err(_) = sqlx::query("DELETE FROM products WHERE products_type_id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+    {
+        return HttpResponse::InternalServerError().body("Failed to delete related products");
+    }
+
+    if let Err(_) = sqlx::query("DELETE FROM products_type WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+    {
+        return HttpResponse::InternalServerError().body("Failed to delete product type");
+    }
+
+    if let Err(_) = tx.commit().await {
+        return HttpResponse::InternalServerError().body("Failed to commit transaction");
+    }
+
+    HttpResponse::Ok().body("Product type deleted successfully")
+}
+
+#[delete("/api/product-types/{id}")]
+pub async fn delete_product_type(
+    db: web::Data<SqlitePool>,
+    path: web::Path<i64>,
+) -> impl Responder {
+    let id = path.into_inner();
+
+    let mut tx: sqlx::Transaction<'static, sqlx::Sqlite> = match db.begin().await {
+        Ok(tx) => tx,
+        Err(_) => return HttpResponse::InternalServerError().body("Failed to begin transaction"),
+    };
+
+    let product_id =
+        match sqlx::query_scalar::<_, i64>("SELECT id FROM products WHERE products_type_id = ?")
+            .bind(id)
+            .fetch_one(&mut *tx)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                return HttpResponse::InternalServerError()
+                    .body(format!("Failed to get product_id: {}", e));
+            }
+        };
+    let image_paths =
+        match sqlx::query_scalar::<_, String>("SELECT image_path FROM images WHERE product_id = ?")
+            .bind(product_id)
+            .fetch_all(&mut *tx)
+            .await
+        {
+            Ok(paths) => paths,
+            Err(_) => {
+                return HttpResponse::InternalServerError().body("Failed to fetch image paths");
+            }
+        };
+
+    let product_type_name = match sqlx::query_scalar::<_, String>(
+        "SELECT products_type_name FROM products_type WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_one(&mut *tx) // <--- ใช้ fetch_one เพราะต้องการค่าเดียว
+    .await
+    {
+        Ok(name) => name,
+        Err(_) => {
+            return HttpResponse::InternalServerError().body("Failed to get name product type");
+        }
+    };
+
+    for path in image_paths {
+
+        let old_dir = match std::path::Path::new(&path).parent() {
+            Some(p) => p,
+            None => {
+                return HttpResponse::InternalServerError().body("Failed to get old parent directory");
+            }
+        };
+
+        if let Err(e) = fs::remove_dir_all(old_dir) {
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to create folder: {}", e));
+        }
+
+        let new_image_path = path.replace(&product_type_name, "other"); // ต้องใช้ & เพราะเป็น reference
+
+        let new_dir = match std::path::Path::new(&new_image_path).parent() {
+            Some(p) => p,
+            None => {
+                return HttpResponse::InternalServerError().body("Failed to get parent directory");
+            }
+        };
+
+        if let Err(e) = fs::create_dir_all(new_dir) {
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to create folder: {}", e));
+        }
+
+        if std::path::Path::new(&path).exists() {
+            if let Err(_) = fs::rename(&path, &new_image_path) {
+                return HttpResponse::InternalServerError().body(path);
+            }
+        }
+
+        if let Err(e) = sqlx::query(
+            "UPDATE images SET image_path = ? WHERE product_id = ? AND image_path = ?",
+        )
+        .bind(&new_image_path) // ค่าใหม่
+        .bind(product_id) // ใช้ id ดีกว่าใช้ชื่อ เพราะมัน unique ชัดเจน
+        .bind(&path) // อัปเดตเฉพาะภาพที่ตรง path เดิม
+        .execute(&mut *tx)
+        .await
+        {
+            return HttpResponse::InternalServerError()
+                .body(format!("Failed to update images: {}", e));
+        }
+    }
+
+    if let Err(_) =
+        sqlx::query("UPDATE products SET products_type_id = null WHERE products_type_id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+    {
+        return HttpResponse::InternalServerError().body("Failed to update products");
+    }
+
+    if let Err(_) = sqlx::query("DELETE FROM products_type WHERE id = ?")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+    {
+        return HttpResponse::InternalServerError().body("Failed to delete product type");
+    }
+
+    if let Err(_) = tx.commit().await {
+        return HttpResponse::InternalServerError().body("Failed to commit transaction");
+    }
+
+    HttpResponse::Ok().body("Product type deleted successfully")
 }

@@ -16,7 +16,7 @@ use crate::handlers::products::fetch_products;
 use handlers::{
     products::{delete_product, post_products},
     products_type::{
-        delete_product_type, fetch_all_product_types, fetch_products_types, post_products_type,
+        delete_product_type, delete_product_type_all, fetch_all_product_types, fetch_products_types, post_products_type
     },
 };
 
@@ -383,6 +383,29 @@ async fn delete_product_form(
     HttpResponse::BadRequest().body("Invalid or missing delete_id")
 }
 
+
+#[post("/api/product-type-all/delete")]
+async fn delete_product_type_all_form(
+    form: web::Form<std::collections::HashMap<String, String>>,
+) -> impl actix_web::Responder {
+    if let Some(id_str) = form.get("delete_id") {
+        if let Ok(id) = id_str.parse::<u64>() {
+            match delete_product_type_all(id).await {
+                Ok(_) => {
+                    return HttpResponse::Found()
+                        .append_header(("Location", "/product-types"))
+                        .finish();
+                }
+                Err(e) => {
+                    return HttpResponse::InternalServerError()
+                        .body(format!("Failed to delete: {}", e));
+                }
+            }
+        }
+    }
+    HttpResponse::BadRequest().body("Invalid or missing delete_id")
+}
+
 #[post("/api/product-type/delete")]
 async fn delete_product_type_form(
     form: web::Form<std::collections::HashMap<String, String>>,
@@ -454,6 +477,7 @@ async fn main() -> std::io::Result<()> {
             .route("/products", web::get().to(get_products))
             .route("/product-types", web::get().to(get_product_types))
             .service(post_product_type)
+            .service(delete_product_type_all_form)
             .service(delete_product_type_form)
             .service(post_product)
             .service(delete_product_form)
